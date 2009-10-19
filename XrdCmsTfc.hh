@@ -33,9 +33,7 @@ class TrivialFileCatalog : public XrdOucName2Name
 {
 public:
 
-    TrivialFileCatalog (XrdSysError *lp, const char * tfc_file) : XrdOucName2Name()
-       {m_url = tfc_file; eDest = lp; m_destination="any"; 
-        m_protocols.push_back("direct"); parse();}
+    TrivialFileCatalog (XrdSysError *lp, const char * tfc_file);
 
     virtual ~TrivialFileCatalog ();
 
@@ -48,11 +46,12 @@ public:
     int parse();
 
 private:
-    mutable bool 	m_connectionStatus;
     
     typedef struct {
 	pcre *pathMatch;
+        std::string pathMatchStr;
 	pcre *destinationMatch;
+        std::string destinationMatchStr;
 	std::string result;
 	std::string chain;
     } Rule;
@@ -84,7 +83,9 @@ private:
     std::string			m_destination;    
     std::string                 m_url;
 
-    static XrdSysError *eDest;
+    static int s_numberOfInstances;
+
+    XrdSysError *eDest;
 
 };    
     

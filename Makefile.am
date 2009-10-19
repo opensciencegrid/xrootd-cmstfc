@@ -19,5 +19,5 @@ INCLUDES = -I$(top_srcdir)/src
 libXrdCmsTfc_la_SOURCES = \
          XrdCmsTfc.cc XrdCmsTfc.hh
 
-libXrdHdfs_la_LDFLAGS = -lxerces-c
+libXrdCmsTfc_la_LDFLAGS = -lxerces-c -lpcre
 

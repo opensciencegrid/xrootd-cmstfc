@@ -33,11 +33,10 @@ extern "C"
 XrdOucName2Name *XrdOucgetName2Name(XrdSysError *eDest, const char *confg,
       const char *parms, const char *lroot, const char *rroot)
 {
-  TrivialFileCatalog *myTFC = new TrivialFileCatalog(eDest, "/tmp/test");
   eDest->Say("Copr. 2009 University of Nebraska-Lincoln TFC plugin v 1.0"); 
 
-  eDest->Say("Params: ");
-  eDest->Say(parms);
+  eDest->Say("Params: ", parms);
+  TrivialFileCatalog *myTFC = new TrivialFileCatalog(eDest, parms);
 
   return myTFC;
 }
@@ -69,6 +68,24 @@ inline XMLCh*  _toDOMS(std::string temp){
     XMLCh* buff = XMLString::transcode(temp.c_str());    
     return  buff;
 }
+
+int XrdCmsTfc::TrivialFileCatalog::s_numberOfInstances = 0;
+XrdCmsTfc::TrivialFileCatalog::TrivialFileCatalog(XrdSysError *lp, const char * tfc_file) : XrdOucName2Name(), m_destination("any") {
+       m_url = tfc_file;
+       eDest = lp;
+       try { 
+           if (s_numberOfInstances==0) {
+               XMLPlatformUtils::Initialize();
+               eDest->Say("Xerces-c has been initialized.");
+           }
+       } catch (const XMLException& e) {
+           eDest->Say("Xerces-c error in initialization. Exception message is "
+               , _toChar(e.getMessage()));
+    }
+    ++s_numberOfInstances;
+
+    parse();
+  }
 
 void XrdCmsTfc::TrivialFileCatalog::freeProtocolRules(ProtocolRules protRules) {
   ProtocolRules::iterator it;
@@ -124,7 +141,9 @@ XrdCmsTfc::TrivialFileCatalog::parseRule (DOMNode *ruleNode,
     const char *error;
     int erroffset;
     rule.pathMatch = NULL;
+    rule.pathMatchStr = pathMatchRegexp;
     rule.destinationMatch = NULL;
+    rule.destinationMatchStr = destinationMatchRegexp;
     rule.pathMatch = pcre_compile(pathMatchRegexp, 0, &error, &erroffset, NULL);
     if (rule.pathMatch == NULL) {
       char *err = (char *)malloc(BUFFSIZE*sizeof(char));
@@ -144,7 +163,7 @@ XrdCmsTfc::TrivialFileCatalog::parseRule (DOMNode *ruleNode,
     }
     rule.result = result;
     rule.chain = chain;
-    rules[protocol].push_back (rule);
+    rules[protocol].push_back(rule);
     return 0;
 }
 
@@ -204,7 +223,7 @@ XrdCmsTfc::TrivialFileCatalog::parse ()
 
 	std::ifstream configFile;
 	configFile.open(m_filename.c_str());
-	eDest->Say("Using catalog configuration", m_filename.c_str());
+	eDest->Say("Using catalog file ", m_filename.c_str());
 	
 	if (!configFile.good() || !configFile.is_open())
 	{
@@ -213,11 +232,11 @@ XrdCmsTfc::TrivialFileCatalog::parse ()
 	}
 	
 	configFile.close();
-	
-	XercesDOMParser* parser = new XercesDOMParser;     
+
+	XercesDOMParser* parser = new XercesDOMParser();
 	parser->setValidationScheme(XercesDOMParser::Val_Auto);
 	parser->setDoNamespaces(false);
-	parser->parse(m_filename.c_str());	
+	parser->parse(m_filename.c_str());
 	DOMDocument* doc = parser->getDocument();
 	assert(doc);
 	
@@ -234,6 +253,7 @@ XrdCmsTfc::TrivialFileCatalog::parse ()
 	 */
 
 	/*first of all do the lfn-to-pfn bit*/
+
 	{
 	    DOMNodeList *rules =doc->getElementsByTagName(_toDOMS("lfn-to-pfn"));
 	    unsigned int ruleTagsNum  = 
@@ -300,7 +320,11 @@ XrdCmsTfc::TrivialFileCatalog::lfn2pfn(const char *lfn, char *buff, int blen)
     return XRDCMSTFC_ERR_NOLFN2PFN;
 }
 
+int XrdCmsTfc::TrivialFileCatalog::lfn2rfn(const char *lfn, char *buff, int blen) {
 
+    return lfn2pfn(lfn, buff, blen);
+
+}
 
 std::string replace(const std::string inputString, pcre * re, std::string replacementString) {
 
@@ -375,7 +399,7 @@ XrdCmsTfc::TrivialFileCatalog::applyRules (const ProtocolRules& protocolRules,
     std::cerr << "Calling apply rules with protocol: " << protocol << "\n destination: " << destination << "\n " << " on name " << name << std::endl;
     
     const ProtocolRules::const_iterator rulesIterator = protocolRules.find (protocol);
-    if (rulesIterator == protocolRules.end ())
+    if (rulesIterator == protocolRules.end())
 	return "";
     
     const Rules &rules=(*(rulesIterator)).second;
@@ -387,28 +411,38 @@ XrdCmsTfc::TrivialFileCatalog::applyRules (const ProtocolRules& protocolRules,
     {
         int ovector[OVECCOUNT];
         int rc=0;
-        pcre_exec(i->destinationMatch, NULL, destination.c_str(), destination.length(), 0, 0, ovector, OVECCOUNT);
-	if (rc < 0)
+        rc = pcre_exec(i->destinationMatch, NULL, destination.c_str(), destination.length(), 0, 0, ovector, OVECCOUNT);
+	if (rc < 0) {
 	    continue;
+        } else {
+            std::cerr << "Destination did match; my destination " << destination << ", regexp: " << i->destinationMatchStr << std::endl;
+        }
 	
-        pcre_exec(i->pathMatch, NULL, name.c_str(), name.length(), 0, 0, ovector, OVECCOUNT);
-	if (rc < 0)
+        rc = pcre_exec(i->pathMatch, NULL, name.c_str(), name.length(), 0, 0, ovector, OVECCOUNT);
+	if (rc < 0) {
 	    continue;
+        } else {
+            std::cerr << "Path did match; my path " << name << ", regexp: " << i->pathMatchStr << std::endl;
+        }
 	
-	std::cerr << "Rule matched! " << std::endl;	
+	std::cerr << "Rule matched; path: " << i->pathMatchStr << std::endl;	
 	
 	std::string chain = i->chain;
 	if ((direct==true) && (chain != ""))
 	{
 	    name = 
 		applyRules (protocolRules, chain, destination, direct, name);		
-	}
+	} else {
+            std::cerr << "Not chaining another rule." << std::endl;
+        }
 	    
-        pcre_exec(i->pathMatch, NULL, name.c_str(), name.length(), 0, 0, ovector,
+        rc = pcre_exec(i->pathMatch, NULL, name.c_str(), name.length(), 0, 0, ovector,
             OVECCOUNT);
 
-        if (rc > 0) {
+        if (rc >= 0) {
             name = replaceWithRegexp(ovector, rc, name, i->result);
+        } else {
+            std::cerr << "No replacements necessary." << std::endl;
         }
 	
 	if ((direct == false) && (chain !=""))
@@ -416,7 +450,7 @@ XrdCmsTfc::TrivialFileCatalog::applyRules (const ProtocolRules& protocolRules,
 	    name = 
 		applyRules (protocolRules, chain, destination, direct, name);		
 	}
-	
+	std::cerr << "Result " << name << endl;
 	return name;
     }
     return "";
