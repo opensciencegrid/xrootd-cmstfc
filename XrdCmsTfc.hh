@@ -4,7 +4,10 @@
 #include "XrdOuc/XrdOucName2Name.hh"
 #include "XrdSys/XrdSysError.hh"
 
+#include <pcre.h>
+
 #include <list>
+#include <map>
 #include <utility>
 #include <xercesc/dom/DOM.hpp>
 
@@ -21,13 +24,18 @@ namespace XrdCmsTfc
 
 #define XRDCMSTFC_OK 0
 #define XRDCMSTFC_ERR_PARSERULE 1
+#define XRDCMSTFC_ERR_URL 2
+#define XRDCMSTFC_ERR_FILE 3
+#define XRDCMSTFC_ERR_NOPFN2LFN 4
+#define XRDCMSTFC_ERR_NOLFN2PFN 5
 
-class TrivialFileCatalog : XrdOucName2Name
+class TrivialFileCatalog : public XrdOucName2Name
 {
 public:
 
     TrivialFileCatalog (XrdSysError *lp, const char * tfc_file) : XrdOucName2Name()
-       {m_url = tfc_file; eDest = lp;}
+       {m_url = tfc_file; eDest = lp; m_destination="any"; 
+        m_protocols.push_back("direct"); parse();}
 
     virtual ~TrivialFileCatalog ();
 
@@ -36,13 +44,15 @@ public:
     int lfn2pfn(const char *lfn, char *buff, int blen);
 
     int lfn2rfn(const char *lfn, char *buff, int blen);
- 
+
+    int parse();
+
 private:
     mutable bool 	m_connectionStatus;
     
     typedef struct {
-	pcre pathMatch;
-	pcre destinationMatch;	
+	pcre *pathMatch;
+	pcre *destinationMatch;
 	std::string result;
 	std::string chain;
     } Rule;
@@ -50,7 +60,9 @@ private:
     typedef std::list <Rule> Rules;
     typedef std::map <std::string, Rules> ProtocolRules;
 
-    void parseRule (xercesc::DOMNode *ruleNode, 
+    void freeProtocolRules(ProtocolRules);
+
+    int parseRule (xercesc::DOMNode *ruleNode, 
 		    ProtocolRules &rules);
     
     std::string applyRules (const ProtocolRules& protocolRules,
@@ -70,7 +82,7 @@ private:
     std::string			m_filename;
     std::list <std::string>	m_protocols;
     std::string			m_destination;    
-    const char *                m_url;
+    std::string                 m_url;
 
     static XrdSysError *eDest;
 

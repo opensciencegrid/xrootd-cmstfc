@@ -1,12 +1,17 @@
 /* 
-   Concrete implementation of a FileCatalog.
-   Author: Giulio.Eulisse@cern.ch
+   Implementation of a N2N class using the CMS TFC
+
+   Rewritten, but adopted from upstream CMS sources
+   Author: Brian Bockelman
+   Original Author: Giulio.Eulisse@cern.ch
  */
 
 #include <set>
+#include <vector>
 #include <string>
 
-#include "TrivialFileCatalog.hh"
+#include "XrdCmsTfc.hh"
+#include "XrdSys/XrdSysError.hh"
 
 #include <xercesc/dom/DOM.hpp>
 #include <xercesc/parsers/XercesDOMParser.hpp>
@@ -15,22 +20,44 @@
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
+#include <sstream>
+
+#define BUFFSIZE 1024
+#define OVECCOUNT 30
 
 using namespace xercesc;
-using namespace XrdTfcCms;
+using namespace XrdCmsTfc;
 
 extern "C"
 {
 XrdOucName2Name *XrdOucgetName2Name(XrdSysError *eDest, const char *confg,
       const char *parms, const char *lroot, const char *rroot)
 {
-  static TrivialFileCatalog myTFC(eDest);
-  eDest.Say("Copr. 2009 University of Nebraska-Lincoln TFC plugin v 1.0"); 
+  TrivialFileCatalog *myTFC = new TrivialFileCatalog(eDest, "/tmp/test");
+  eDest->Say("Copr. 2009 University of Nebraska-Lincoln TFC plugin v 1.0"); 
 
-  eDest.Say("Params: " << parms);
+  eDest->Say("Params: ");
+  eDest->Say(parms);
 
-  return &myTFC;
+  return myTFC;
 }
+}
+
+typedef std::vector<std::string> StringVec;
+
+StringVec &split(const std::string &s, char delim, StringVec &elems) {
+    std::stringstream ss(s);
+    std::string item;
+    while(std::getline(ss, item, delim)) {
+        elems.push_back(item);
+    }
+    return elems;
+}
+
+
+StringVec split(const std::string &s, char delim) {
+    StringVec elems;
+    return split(s, delim, elems);
 }
 
 inline char * _toChar(const XMLCh *toTranscode)
@@ -43,96 +70,114 @@ inline XMLCh*  _toDOMS(std::string temp){
     return  buff;
 }
 
-XrdTfcCms::TrivialFileCatalog::TrivialFileCatalog ()
-    : m_connectionStatus (false),
-      m_fileType ("ROOT_All"),
-      m_destination ("any")
-{  
+void XrdCmsTfc::TrivialFileCatalog::freeProtocolRules(ProtocolRules protRules) {
+  ProtocolRules::iterator it;
+  Rules::iterator it2;
+  for (it = protRules.begin(); it != protRules.end(); it++) {
+    Rules rules = (*it).second;
+    for (it2 = rules.begin(); it2 != rules.end(); it2++) {
+      if (it2->pathMatch != NULL)
+        pcre_free(it2->pathMatch);
+    }
+  }
 }
 
-XrdTfcCms::TrivialFileCatalog::~TrivialFileCatalog ()
+XrdCmsTfc::TrivialFileCatalog::~TrivialFileCatalog ()
 {
+  freeProtocolRules(m_directRules);
+  freeProtocolRules(m_inverseRules);
 }
 
 int
-XrdTfcCms::TrivialFileCatalog::parseRule (DOMNode *ruleNode, 
+XrdCmsTfc::TrivialFileCatalog::parseRule (DOMNode *ruleNode, 
                                           ProtocolRules &rules)
 {
     if (! ruleNode)
     {
-	throw FCTransactionException
-	    ("TrivialFileCatalog::connect",
-	     ":Malformed trivial catalog"); 		
+        eDest->Say("Malformed trivial catalog; passed a NULL rule");
+        return XRDCMSTFC_ERR_PARSERULE;
     }
 	    
     DOMElement* ruleElement = static_cast<DOMElement *>(ruleNode);	    
 
-    if (! ruleElement)
+    if (! ruleElement) {
+        eDest->Say("Xerces was unable to cast the rule node to an element.");
         return XRDCMSTFC_ERR_PARSERULE;
+    }
 
-    std::string protocol 
+    char * protocol 
 	= _toChar (ruleElement->getAttribute (_toDOMS ("protocol")));	    
-    std::string destinationMatchRegexp
+    char * destinationMatchRegexp
 	= _toChar (ruleElement->getAttribute (_toDOMS ("destination-match")));
 
-    if (destinationMatchRegexp.empty ())
+    if (strlen(destinationMatchRegexp) == 0)
 	destinationMatchRegexp = ".*";
 
-    std::string pathMatchRegexp 
+    char * pathMatchRegexp 
 	= _toChar (ruleElement->getAttribute (_toDOMS ("path-match")));
-    std::string result 
+    char * result 
 	= _toChar (ruleElement->getAttribute (_toDOMS ("result")));
-    std::string chain 
+    char * chain 
 	= _toChar (ruleElement->getAttribute (_toDOMS ("chain")));
     					    
     Rule rule;
-    rule.pathMatch.setPattern (pathMatchRegexp);
-    rule.pathMatch.compile ();
-    rule.destinationMatch.setPattern (destinationMatchRegexp);
-    rule.destinationMatch.compile ();    
+    const char *error;
+    int erroffset;
+    rule.pathMatch = NULL;
+    rule.destinationMatch = NULL;
+    rule.pathMatch = pcre_compile(pathMatchRegexp, 0, &error, &erroffset, NULL);
+    if (rule.pathMatch == NULL) {
+      char *err = (char *)malloc(BUFFSIZE*sizeof(char));
+      snprintf(err, BUFFSIZE, "PCRE compilation failed at offset %d: %s", erroffset, error);
+      eDest->Say(err);
+      free(err);
+      return XRDCMSTFC_ERR_PARSERULE;
+    }
+
+    rule.destinationMatch = pcre_compile(destinationMatchRegexp, 0, &error, &erroffset, NULL);
+    if (rule.destinationMatch == NULL) {
+      char *err = (char *)malloc(BUFFSIZE*sizeof(char));
+      snprintf(err, BUFFSIZE, "PCRE compilation failed at offset %d: %s", erroffset, error);
+      eDest->Say(err);
+      free(err);
+      return XRDCMSTFC_ERR_PARSERULE;
+    }
     rule.result = result;
     rule.chain = chain;
-    rules[protocol].push_back (rule);    
+    rules[protocol].push_back (rule);
+    return 0;
 }
 
-void
-pool::TrivialFileCatalog::connect ()
+int
+XrdCmsTfc::TrivialFileCatalog::parse ()
 {
-    try
-    {
-  	eDest.Say("Connecting to the catalog ");
-		   << m_url << coral::MessageStream::endmsg;
+  	eDest->Say("Connecting to the catalog ", m_url.c_str());
 
-	if (m_url.find ("file:") != std::string::npos)
-	{
-	    m_url = m_url.erase (0, 
-				 m_url.find (":") + 1);	
-	}	
-	else
-	{
-	    throw FCTransactionException
-		("TrivialFileCatalog::connect",
-		 ": Malformed url for file catalog configuration"); 
+	if (m_url.find ("file:") != std::string::npos) {
+	    m_url = m_url.erase (0, m_url.find (":") + 1);	
+	} else {
+            eDest->Say("TrivialFileCatalog::connect: Malformed url for file catalog configuration");
+            return XRDCMSTFC_ERR_URL;
 	}
 
-	lat::StringList tokens = lat::StringOps::split (m_url, "?"); 
-	m_filename = tokens[0];
+        m_filename = split(m_url, '?')[0];
 
-	if (tokens.size () == 2)
+        size_t ques_pos = m_url.find("?");
+	if (ques_pos != std::string::npos)
 	{
-	    std::string options = tokens[1];
-	    lat::StringList optionTokens = lat::StringOps::split (options, "&");
+            m_filename = m_url.substr(0, ques_pos);
+	    std::string options = m_url.substr(ques_pos+1, std::string::npos);
+	    std::vector<std::string> optionTokens = split(options, '&');
 
-	    for (lat::StringList::iterator option = optionTokens.begin ();
-		 option != optionTokens.end ();
+	    for (StringVec::iterator option = optionTokens.begin();
+		 option != optionTokens.end();
 		 option++)
 	    {
-		lat::StringList argTokens = lat::StringOps::split (*option, "=") ;
+		StringVec argTokens = split(*option, '=') ;
 		if (argTokens.size () != 2)
 		{
-		    throw FCTransactionException
-			("TrivialFileCatalog::connect",
-			 ": Malformed url for file catalog configuration"); 
+                    eDest->Say("TrivialFileCatalog::connect: Malformed url for file catalog configuration");
+                    return XRDCMSTFC_ERR_URL;
 		}
 		
 		std::string key = argTokens[0];
@@ -140,7 +185,10 @@ pool::TrivialFileCatalog::connect ()
 		
 		if (key == "protocol")
 		{
-		    m_protocols = lat::StringOps::split (value, ",");
+                   StringVec prots = split(value, ',');
+                   for (StringVec::iterator it = prots.begin();
+                          it != prots.end(); it++)
+                      m_protocols.push_back(*it);
 		}
 		else if (key == "destination")
 		{
@@ -149,28 +197,22 @@ pool::TrivialFileCatalog::connect ()
 	    }
 	}
 	
-	if (m_protocols.empty ())
-	    throw FCTransactionException
-		("TrivialFileCatalog::connect",
-		 ": protocol was not supplied in the contact string"); 
-		
+	if (m_protocols.empty()) {
+            eDest->Say("TrivialFileCatalog::parse: protocol was not supplied in the contact string");
+            return XRDCMSTFC_ERR_URL;
+        }
+
 	std::ifstream configFile;
-	configFile.open (m_filename.c_str ());
+	configFile.open(m_filename.c_str());
+	eDest->Say("Using catalog configuration", m_filename.c_str());
 	
-	
-	trivialLog << coral::Info
-		   << "Using catalog configuration " 
-		   << m_filename << coral::MessageStream::endmsg;
-	
-	if (!configFile.good () || !configFile.is_open ())
+	if (!configFile.good() || !configFile.is_open())
 	{
-	    m_transactionsta = 0;
-	    throw FCTransactionException
-		("TrivialFileCatalog::connect",
-		 ": Unable to open trivial file catalog " + m_filename); 
+            eDest->Say("TrivialFileCatalog::parse: Unable to open trivial file catalog", m_filename.c_str());
+            return XRDCMSTFC_ERR_FILE;
 	}
 	
-	configFile.close ();
+	configFile.close();
 	
 	XercesDOMParser* parser = new XercesDOMParser;     
 	parser->setValidationScheme(XercesDOMParser::Val_Auto);
@@ -215,78 +257,109 @@ pool::TrivialFileCatalog::connect ()
 		parseRule (ruleNode, m_inverseRules);
 	    }	    
 	}
-	
-	m_transactionsta = 1;
-    }
-    catch(std::exception& er)
-    {
-	m_transactionsta = 0;	
-	throw FCconnectionException("TrivialFileCatalog::connect",er.what());
-    }
 }
 
-void
-pool::TrivialFileCatalog::lookupFileByPFN (const std::string & pfn, 
-					   FileCatalog::FileID & fid, 
-					   std::string& filetype) const
+int
+XrdCmsTfc::TrivialFileCatalog::pfn2lfn(const char *pfn, char *buff, int blen) 
 {
-    filetype = m_fileType;    
-    fid = "";
+    std::string tmpLfn = "";
     std::string tmpPfn = pfn;
     
-    for (lat::StringList::const_iterator protocol = m_protocols.begin ();
-	 protocol != m_protocols.end ();
+    for (std::list<std::string>::iterator protocol = m_protocols.begin();
+	 protocol != m_protocols.end();
 	 protocol++)
     {
-	fid = applyRules (m_inverseRules, *protocol, m_destination, false, tmpPfn);
-	if (! fid.empty ())
+	tmpLfn = applyRules(m_inverseRules, *protocol, m_destination, false, tmpPfn);
+	if (!tmpLfn.empty())
 	{
-	    return;	    
-	}	
+            strncpy(buff, tmpLfn.c_str(), blen);
+	    return 0;
+	}
     }
+    eDest->Say("No pfn2lfn mapping for ", pfn);
+    return XRDCMSTFC_ERR_NOPFN2LFN;
 }
 
-void
-pool::TrivialFileCatalog::lookupFileByLFN (const std::string& lfn, 
-					   FileCatalog::FileID& fid) const
+int
+XrdCmsTfc::TrivialFileCatalog::lfn2pfn(const char *lfn, char *buff, int blen)
 {
-    // return NULL id if the catalog is not connected.
-    if (m_transactionsta == 0) {
-	fid = FileCatalog::FileID();
-	return;
-    }
-	
-    // GUID (FileID) and lfn are the same under TrivialFileCatalog
-    fid = lfn;    
+    std::string tmpPfn = "";
+    std::string tmpLfn = lfn;
+    
+    for (std::list<std::string>::iterator protocol = m_protocols.begin();
+         protocol != m_protocols.end();
+         protocol++) 
+    {    
+        tmpLfn = applyRules(m_directRules, *protocol, m_destination, false, tmpLfn);
+        if (!tmpLfn.empty()) {
+            strncpy(buff, tmpLfn.c_str(), blen);
+            return 0;
+        }
+    }   
+    eDest->Say("No lfn2pfn mapping for ", lfn);
+    return XRDCMSTFC_ERR_NOLFN2PFN;
 }
 
-std::string
-replaceWithRegexp (const lat::RegexpMatch matches, 
+
+
+std::string replace(const std::string inputString, pcre * re, std::string replacementString) {
+
+    int ovector[OVECCOUNT], rc;
+    std::string result;
+    rc = pcre_exec(re, NULL, inputString.c_str(), inputString.length(), 0, 0,
+        ovector, OVECCOUNT);
+
+    if (rc <= 0) {
+        return "";
+    }
+
+    int substring_end = 0, substring_begin;
+    for (int i = 0; i < rc; i++) {
+        substring_begin = ovector[2*i];
+        result += inputString.substr(substring_end, substring_begin-substring_end) + replacementString;
+        substring_end = ovector[2*i+1] + substring_begin;
+    }
+
+    return result;
+}
+
+std::string replaceWithRegexp (const int ovector[OVECCOUNT], const int rc,
 		   const std::string inputString,
 		   const std::string outputFormat)
 {
-    //std::cerr << "InputString:" << inputString << std::endl;
-    
+    std::cerr << "InputString:" << inputString << std::endl;
+ 
     char buffer[8];
     std::string result = outputFormat;
-        
+    int substring_length;
+    int substring_begin;
+
     for (int i = 1;
-	 i < matches.numMatches ();
+	 i < rc;
 	 i++)
     {
 	// If this is not true, man, we are in trouble...
-	assert( i<1000000 );
-	sprintf (buffer, "%i", i);
+	assert(i<1000000);
+	sprintf(buffer, "%i", i);
 	std::string variableRegexp = std::string ("[$]") + buffer;
-	std::string matchResult = matches.matchString (inputString, i);
+        
+        substring_begin = ovector[2*i];
+        substring_length = ovector[2*i+1] - substring_begin;
+        std::string matchResult = inputString.substr(substring_begin, substring_length);
 	
-	lat::Regexp sustitutionToken (variableRegexp);
-	
-	//std::cerr << "Current match: " << matchResult << std::endl;
-	
-	result = lat::StringOps::replace (result, 
-					   sustitutionToken, 
-					   matchResult);
+        const char *error;
+        int erroffset;
+        pcre * substitutionToken = pcre_compile(variableRegexp.c_str(),
+            0, &error, &erroffset, NULL);
+        if (substitutionToken == NULL) {
+            pcre_free(substitutionToken);
+            return "";
+        }
+	std::cerr << "Current match: " << matchResult << std::endl;
+        
+	result = replace(result, substitutionToken, matchResult);
+
+        pcre_free(substitutionToken);
     }
     return result;    
 }
@@ -299,7 +372,7 @@ XrdCmsTfc::TrivialFileCatalog::applyRules (const ProtocolRules& protocolRules,
 				      bool direct,
 				      std::string name) const
 {
-    //std::cerr << "Calling apply rules with protocol: " << protocol << "\n destination: " << destination << "\n " << " on name " << name << std::endl;
+    std::cerr << "Calling apply rules with protocol: " << protocol << "\n destination: " << destination << "\n " << " on name " << name << std::endl;
     
     const ProtocolRules::const_iterator rulesIterator = protocolRules.find (protocol);
     if (rulesIterator == protocolRules.end ())
@@ -312,13 +385,17 @@ XrdCmsTfc::TrivialFileCatalog::applyRules (const ProtocolRules& protocolRules,
 	 i != rules.end ();
 	 i++)
     {
-	if (! i->destinationMatch.exactMatch (destination))
+        int ovector[OVECCOUNT];
+        int rc=0;
+        pcre_exec(i->destinationMatch, NULL, destination.c_str(), destination.length(), 0, 0, ovector, OVECCOUNT);
+	if (rc < 0)
 	    continue;
 	
-	if (! i->pathMatch.exactMatch (name))
+        pcre_exec(i->pathMatch, NULL, name.c_str(), name.length(), 0, 0, ovector, OVECCOUNT);
+	if (rc < 0)
 	    continue;
 	
-	//std::cerr << "Rule " << i->pathMatch.pattern () << "matched! " << std::endl;	
+	std::cerr << "Rule matched! " << std::endl;	
 	
 	std::string chain = i->chain;
 	if ((direct==true) && (chain != ""))
@@ -327,13 +404,13 @@ XrdCmsTfc::TrivialFileCatalog::applyRules (const ProtocolRules& protocolRules,
 		applyRules (protocolRules, chain, destination, direct, name);		
 	}
 	    
-	lat::RegexpMatch matches;
-	i->pathMatch.match (name, 0, 0, &matches);
+        pcre_exec(i->pathMatch, NULL, name.c_str(), name.length(), 0, 0, ovector,
+            OVECCOUNT);
+
+        if (rc > 0) {
+            name = replaceWithRegexp(ovector, rc, name, i->result);
+        }
 	
-	name = replaceWithRegexp (matches, 
-				  name,
-				  i->result); 
-	    
 	if ((direct == false) && (chain !=""))
 	{	
 	    name = 
@@ -344,144 +421,4 @@ XrdCmsTfc::TrivialFileCatalog::applyRules (const ProtocolRules& protocolRules,
     }
     return "";
 }
-
-
-void
-XrdTfcCms::TrivialFileCatalog::lookupBestPFN (const FileCatalog::FileID& fid, 
-					 const FileCatalog::FileOpenMode& /*omode*/,
-					 const FileCatalog::FileAccessPattern& /*amode*/,
-					 std::string& pfn,
-					 std::string& filetype) const
-{
-    if (m_transactionsta == 0)
-	throw FCconnectionException("TrivialFileCatalog::lookupBestPFN",
-				    "Catalog not connected");
-    filetype = m_fileType;    
-    
-    pfn = "";
-    std::string lfn = fid;
-    
-    for (lat::StringList::const_iterator protocol = m_protocols.begin ();
-	 protocol != m_protocols.end ();
-	 protocol++)
-    {
-	pfn = applyRules (m_directRules, 
-			  *protocol, 
-			  m_destination, 
-			  true, 
-			  lfn);
-	if (! pfn.empty ())
-	{
-	    return;
-	}
-    }
-} 
-
-bool
-XrdCmsTfc::TrivialFileCatalog::retrievePFN (const std::string& query, 
-				       FCBuf<PFNEntry>& buf, 
-				       const size_t& /*start*/)
-{
-    if (m_transactionsta == 0)
-	throw FCconnectionException("TrivialFileCatalog::lookupBestPFN",
-				    "Catalog not connected");
-    // The only query supported is lfn='something' or pfn='something'
-    // No spaces allowed in something.
-    lat::Regexp grammar ("(lfname|guid)='(.*)'");
-    lat::RegexpMatch grammarMatches;
-    
-    grammar.match (query, 0, 0, &grammarMatches);
-    
-    if (grammarMatches.numMatches () != 3)
-    {
-	throw FCTransactionException
-	    ("TrivialFileCatalog::retrievePFN",
-	     "malformed query. the only supported one is lfname='something'"
-	     " or guid='something'");
-    }
-    
-    std::string lfn = grammarMatches.matchString (query, 2);
-    
-    for (lat::StringList::iterator protocol = m_protocols.begin ();
-	 protocol != m_protocols.end ();
-	 protocol++)
-    {
-	std::string pfn = applyRules (m_directRules, *protocol, m_destination, true, lfn);
-	if (! pfn.empty ())
-	{
-	    buf.push_back (PFNEntry(pfn, 
-				    lfn, 
-				    m_fileType));    
-	    return true;    
-	}	
-    }
-
-
-    
-    buf.push_back (PFNEntry(lfn, 
-			    lfn, 
-			    m_fileType));    
-    
-    return false;    
-}
-
-bool
-XrdCmsTfc::TrivialFileCatalog::retrieveLFN (const std::string& query, 
-				       FCBuf<LFNEntry>& buf, 
-				       const size_t& /*start*/)
-{    
-    if (m_transactionsta == 0)
-	throw FCconnectionException("TrivialFileCatalog::lookupBestPFN",
-				    "Catalog not connected");
-    // The only query supported is lfn='something' or pfn='something'
-    // No spaces allowed in something.
-
-    lat::Regexp grammar ("(pfname|guid)='(.*)'");
-    lat::RegexpMatch grammarMatches;
-    
-    grammar.match (query, 0, 0, &grammarMatches);
-    
-    if (grammarMatches.numMatches () != 3)
-    {
-	throw FCTransactionException
-	    ("TrivialFileCatalog::retrieveLFN",
-	     "malformed query. the only supported one is pfname='something'"
-	     " or guid='something'");
-    }
-
-    std::string selector = grammarMatches.matchString (query, 1);
-    std::string pfn = grammarMatches.matchString (query, 2);
-
-
-    if (selector == "guid")
-    {
-	buf.push_back (LFNEntry (pfn,
-				 pfn));
-	return true;	
-    }
-    
-
-    for (lat::StringList::iterator protocol = m_protocols.begin ();
-	 protocol != m_protocols.end ();
-	 protocol++)
-    {
-	std::string lfn = applyRules (m_inverseRules, *protocol, m_destination, false, pfn);
-	//	std::cerr << "LFN: " << lfn << std::endl;
-	
-	if (! lfn.empty ())
-	{
-	    buf.push_back (LFNEntry(lfn, 
-				    lfn));    
-	    return true;    
-	}	
-    }
-
-
-    
-    buf.push_back (LFNEntry(pfn, 
-			    pfn));    
-    
-    return false;    
-}
-
 
