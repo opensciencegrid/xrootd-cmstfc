@@ -277,6 +277,7 @@ XrdCmsTfc::TrivialFileCatalog::parse ()
 		parseRule (ruleNode, m_inverseRules);
 	    }	    
 	}
+    return XRDCMSTFC_OK;
 }
 
 int
