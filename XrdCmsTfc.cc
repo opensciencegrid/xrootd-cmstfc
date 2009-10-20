@@ -450,7 +450,7 @@ XrdCmsTfc::TrivialFileCatalog::applyRules (const ProtocolRules& protocolRules,
 	    name = 
 		applyRules (protocolRules, chain, destination, direct, name);		
 	}
-	std::cerr << "Result " << name << endl;
+	std::cerr << "Result " << name << std::endl;
 	return name;
     }
     return "";
