@@ -297,8 +297,8 @@ XrdCmsTfc::TrivialFileCatalog::pfn2lfn(const char *pfn, char *buff, int blen)
 	    return 0;
 	}
     }
-    eDest->Say("No pfn2lfn mapping for ", pfn);
-    return XRDCMSTFC_ERR_NOPFN2LFN;
+    strncpy(buff, pfn, blen);
+    return 0;
 }
 
 int
@@ -318,7 +318,8 @@ XrdCmsTfc::TrivialFileCatalog::lfn2pfn(const char *lfn, char *buff, int blen)
         }
     }   
     eDest->Say("No lfn2pfn mapping for ", lfn);
-    return XRDCMSTFC_ERR_NOLFN2PFN;
+    strncpy(buff, lfn, blen);
+    return 0;
 }
 
 int XrdCmsTfc::TrivialFileCatalog::lfn2rfn(const char *lfn, char *buff, int blen) {
