@@ -12,12 +12,14 @@ lib_LTLIBRARIES = libXrdCmsTfc.la
 
 xrootdsfsincdir = $(includedir)/xrootd/XrdCmsTfc
 
-xrootdsfsinc_HEADERS = XrdCmsTfc.hh
+xrootdsfsinc_HEADERS = src/XrdCmsTfc.hh
 
 INCLUDES = -I$(top_srcdir)/src
 
 libXrdCmsTfc_la_SOURCES = \
-         XrdCmsTfc.cc XrdCmsTfc.hh
+         src/XrdCmsTfc.cc src/XrdCmsTfc.hh
 
 libXrdCmsTfc_la_LDFLAGS = -lxerces-c -lpcre
+
+EXTRA_DIST = spec/xrootd-cmstfc.spec
 
