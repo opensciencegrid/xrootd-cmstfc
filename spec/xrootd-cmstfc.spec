@@ -1,6 +1,6 @@
 
 Name: xrootd-cmstfc
-Version: 1.4
+Version: 1.4.2
 Release: 1
 Summary: CMS TFC plugin for xrootd
 

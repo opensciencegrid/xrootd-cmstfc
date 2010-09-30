@@ -311,9 +311,10 @@ XrdCmsTfc::TrivialFileCatalog::lfn2pfn(const char *lfn, char *buff, int blen)
          protocol != m_protocols.end();
          protocol++) 
     {    
-        tmpLfn = applyRules(m_directRules, *protocol, m_destination, false, tmpLfn);
+        tmpLfn = applyRules(m_directRules, *protocol, m_destination, true, tmpLfn);
         if (!tmpLfn.empty()) {
             strncpy(buff, tmpLfn.c_str(), blen);
+            eDest->Say("Resulting PFN: ", buff);
             return 0;
         }
     }   
@@ -353,7 +354,7 @@ std::string replaceWithRegexp (const int ovector[OVECCOUNT], const int rc,
 		   const std::string inputString,
 		   const std::string outputFormat)
 {
-    std::cerr << "InputString:" << inputString << std::endl;
+    //std::cerr << "InputString:" << inputString << std::endl;
  
     char buffer[8];
     std::string result = outputFormat;
@@ -381,7 +382,7 @@ std::string replaceWithRegexp (const int ovector[OVECCOUNT], const int rc,
             pcre_free(substitutionToken);
             return "";
         }
-	std::cerr << "Current match: " << matchResult << std::endl;
+	//std::cerr << "Current match: " << matchResult << std::endl;
         
 	result = replace(result, substitutionToken, matchResult);
 
@@ -398,7 +399,7 @@ XrdCmsTfc::TrivialFileCatalog::applyRules (const ProtocolRules& protocolRules,
 				      bool direct,
 				      std::string name) const
 {
-    std::cerr << "Calling apply rules with protocol: " << protocol << "\n destination: " << destination << "\n " << " on name " << name << std::endl;
+    //std::cerr << "Calling apply rules with protocol: " << protocol << "\n destination: " << destination << "\n " << " on name " << name << std::endl;
     
     const ProtocolRules::const_iterator rulesIterator = protocolRules.find (protocol);
     if (rulesIterator == protocolRules.end())
@@ -417,17 +418,17 @@ XrdCmsTfc::TrivialFileCatalog::applyRules (const ProtocolRules& protocolRules,
 	if (rc < 0) {
 	    continue;
         } else {
-            std::cerr << "Destination did match; my destination " << destination << ", regexp: " << i->destinationMatchStr << std::endl;
+            //std::cerr << "Destination did match; my destination " << destination << ", regexp: " << i->destinationMatchStr << std::endl;
         }
 	
         rc = pcre_exec(i->pathMatch, NULL, name.c_str(), name.length(), 0, 0, ovector, OVECCOUNT);
 	if (rc < 0) {
 	    continue;
         } else {
-            std::cerr << "Path did match; my path " << name << ", regexp: " << i->pathMatchStr << std::endl;
+            //std::cerr << "Path did match; my path " << name << ", regexp: " << i->pathMatchStr << std::endl;
         }
 	
-	std::cerr << "Rule matched; path: " << i->pathMatchStr << std::endl;	
+	//std::cerr << "Rule matched; path: " << i->pathMatchStr << std::endl;	
 	
 	std::string chain = i->chain;
 	if ((direct==true) && (chain != ""))
@@ -435,7 +436,7 @@ XrdCmsTfc::TrivialFileCatalog::applyRules (const ProtocolRules& protocolRules,
 	    name = 
 		applyRules (protocolRules, chain, destination, direct, name);		
 	} else {
-            std::cerr << "Not chaining another rule." << std::endl;
+            //std::cerr << "Not chaining another rule!" << std::endl;
         }
 	    
         rc = pcre_exec(i->pathMatch, NULL, name.c_str(), name.length(), 0, 0, ovector,
@@ -444,7 +445,7 @@ XrdCmsTfc::TrivialFileCatalog::applyRules (const ProtocolRules& protocolRules,
         if (rc >= 0) {
             name = replaceWithRegexp(ovector, rc, name, i->result);
         } else {
-            std::cerr << "No replacements necessary." << std::endl;
+            //std::cerr << "No replacements necessary." << std::endl;
         }
 	
 	if ((direct == false) && (chain !=""))
@@ -452,7 +453,7 @@ XrdCmsTfc::TrivialFileCatalog::applyRules (const ProtocolRules& protocolRules,
 	    name = 
 		applyRules (protocolRules, chain, destination, direct, name);		
 	}
-	std::cerr << "Result " << name << std::endl;
+	//std::cerr << "Result " << name << std::endl;
 	return name;
     }
     return "";
