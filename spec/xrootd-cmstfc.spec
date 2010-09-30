@@ -35,6 +35,10 @@ rm -rf $RPM_BUILD_ROOT
 %{_includedir}/xrootd/XrdCmsTfc/XrdCmsTfc.hh
 
 %changelog
+* Wed Sep 29 2010 Brian Bockelman <bbockelm@cse.unl.edu> 1.4.2-1
+- Reduce verbosity of the logging.
+- Fix for TFC parsing to better respect rule order; request from Florida.
+
 * Tue Aug 24 2010 Brian Bockelman <bbockelm@cse.unl.edu> 1.4.0-1
 - Break xrootd-cmstfc off into its own standalone RPM.
 
