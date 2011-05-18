@@ -1,6 +1,6 @@
 
 AC_PREREQ(2.57)
-AC_INIT(xrootd-cmstfc,1.4.2,xrootd-demonstrator@opensciencegrid.org)
+AC_INIT(xrootd-cmstfc,1.4.3,xrootd-demonstrator@opensciencegrid.org)
 AC_CONFIG_SRCDIR([src/XrdCmsTfc.hh])
 
 AC_PROG_CXX

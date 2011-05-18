@@ -414,14 +414,14 @@ XrdCmsTfc::TrivialFileCatalog::applyRules (const ProtocolRules& protocolRules,
     {
         int ovector[OVECCOUNT];
         int rc=0;
-        rc = pcre_exec(i->destinationMatch, NULL, destination.c_str(), destination.length(), 0, 0, ovector, OVECCOUNT);
+        rc = pcre_exec(i->destinationMatch, NULL, destination.c_str(), destination.length(), 0, PCRE_ANCHORED, ovector, OVECCOUNT);
 	if (rc < 0) {
 	    continue;
         } else {
             //std::cerr << "Destination did match; my destination " << destination << ", regexp: " << i->destinationMatchStr << std::endl;
         }
 	
-        rc = pcre_exec(i->pathMatch, NULL, name.c_str(), name.length(), 0, 0, ovector, OVECCOUNT);
+        rc = pcre_exec(i->pathMatch, NULL, name.c_str(), name.length(), 0, PCRE_ANCHORED, ovector, OVECCOUNT);
 	if (rc < 0) {
 	    continue;
         } else {
@@ -439,7 +439,7 @@ XrdCmsTfc::TrivialFileCatalog::applyRules (const ProtocolRules& protocolRules,
             //std::cerr << "Not chaining another rule!" << std::endl;
         }
 	    
-        rc = pcre_exec(i->pathMatch, NULL, name.c_str(), name.length(), 0, 0, ovector,
+        rc = pcre_exec(i->pathMatch, NULL, name.c_str(), name.length(), 0, PCRE_ANCHORED, ovector,
             OVECCOUNT);
 
         if (rc >= 0) {

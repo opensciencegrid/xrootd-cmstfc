@@ -1,6 +1,6 @@
 
 Name: xrootd-cmstfc
-Version: 1.4.2
+Version: 1.4.3
 Release: 1
 Summary: CMS TFC plugin for xrootd
 
@@ -10,7 +10,7 @@ URL: svn://t2.unl.edu/brian/XrdCmsTfc
 Source0: %{name}-%{version}.tar.gz
 BuildRoot: %(mktemp -ud %{_tmppath}/%{name}-%{version}-%{release}-XXXXXX)
 BuildRequires: xrootd-devel xerces-c-devel pcre-devel
-Requires: xrootd pcre xerces-c
+Requires: /usr/bin/xrootd pcre xerces-c
 
 %description
 %{summary}
@@ -35,6 +35,12 @@ rm -rf $RPM_BUILD_ROOT
 %{_includedir}/xrootd/XrdCmsTfc/XrdCmsTfc.hh
 
 %changelog
+* Wed May 18 2011 Brian Bockelman <bbockelm@cse.unl.edu> 1.4.3-1
+- Apply path matching only at the beginning of the path.
+
+* Mon Mar 28 2011 Brian Bockelman <bbockelm@cse.unl.edu> 1.4.2-2
+- Rebuild to reflect the updated RPM names.
+
 * Wed Sep 29 2010 Brian Bockelman <bbockelm@cse.unl.edu> 1.4.2-1
 - Reduce verbosity of the logging.
 - Fix for TFC parsing to better respect rule order; request from Florida.
