@@ -124,7 +124,7 @@ XrdCmsTfc::TrivialFileCatalog::parseRule (DOMNode *ruleNode,
 
     char * protocol 
 	= _toChar (ruleElement->getAttribute (_toDOMS ("protocol")));	    
-    char * destinationMatchRegexp
+    const char * destinationMatchRegexp
 	= _toChar (ruleElement->getAttribute (_toDOMS ("destination-match")));
 
     if (strlen(destinationMatchRegexp) == 0)
