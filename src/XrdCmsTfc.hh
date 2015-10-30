@@ -37,11 +37,13 @@ public:
 
     virtual ~TrivialFileCatalog ();
 
-    int pfn2lfn(const char *pfn, char *buff, int blen);
+    virtual int pfn2lfn(const char *pfn, char *buff, int blen);
   
-    int lfn2pfn(const char *lfn, char *buff, int blen);
+    virtual int lfn2pfn(const char *lfn, char *buff, int blen);
 
-    int lfn2rfn(const char *lfn, char *buff, int blen);
+    virtual int lfn2pfn(const char *lfn, std::string&) const;
+
+    virtual int lfn2rfn(const char *lfn, char *buff, int blen);
 
     int parse();
 

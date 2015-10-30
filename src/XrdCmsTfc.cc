@@ -11,6 +11,9 @@
 #include <string>
 
 #include "XrdCmsTfc.hh"
+#ifdef HAVE_N2N_VEC
+#include "N2NVec.hh"
+#endif  // HAVE_N2N_VEC
 #include "XrdSys/XrdSysError.hh"
 
 #include <xercesc/dom/DOM.hpp>
@@ -30,6 +33,10 @@ using namespace XrdCmsTfc;
 
 extern "C"
 {
+#ifdef HAVE_N2N_VEC
+XrdOucName2NameVec *name2nameVec=NULL;
+#endif  // HAVE_N2N_VEC
+
 XrdOucName2Name *XrdOucgetName2Name(XrdSysError *eDest, const char *confg,
       const char *parms, const char *lroot, const char *rroot)
 {
@@ -37,6 +44,10 @@ XrdOucName2Name *XrdOucgetName2Name(XrdSysError *eDest, const char *confg,
 
   eDest->Say("Params: ", parms);
   TrivialFileCatalog *myTFC = new TrivialFileCatalog(eDest, parms);
+
+#ifdef HAVE_N2N_VEC
+  name2nameVec = new N2NVec(*myTFC);
+#endif  // HAVE_N2N_VEC
 
   return myTFC;
 }
@@ -320,6 +331,27 @@ XrdCmsTfc::TrivialFileCatalog::lfn2pfn(const char *lfn, char *buff, int blen)
     }   
     eDest->Say("No lfn2pfn mapping for ", lfn);
     strncpy(buff, lfn, blen);
+    return 0;
+}
+
+int
+XrdCmsTfc::TrivialFileCatalog::lfn2pfn(const char *lfn, std::string &pfn) const
+{
+    std::string tmpLfn = lfn;
+
+    for (std::list<std::string>::const_iterator protocol = m_protocols.begin();
+         protocol != m_protocols.end();
+         protocol++)
+    {
+        tmpLfn = applyRules(m_directRules, *protocol, m_destination, true, tmpLfn);
+        if (!tmpLfn.empty()) {
+            pfn = tmpLfn;
+            eDest->Say("Resulting PFN: ", pfn.c_str());
+            return 0;
+        }
+    }
+    eDest->Say("No lfn2pfn mapping for ", lfn);
+    pfn = lfn;
     return 0;
 }
 

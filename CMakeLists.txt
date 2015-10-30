@@ -19,7 +19,23 @@ endif()
 include_directories( "${PROJECT_SOURCE_DIR}" "${XROOTD_INCLUDES}"
 "${XERCES_INCLUDES}" "${PCRE_INCLUDES}" )
 
-add_library( XrdCmsTfc MODULE src/XrdCmsTfc.cc src/XrdCmsTfc.hh )
+include(CheckCXXSourceCompiles)
+set(CMAKE_REQUIRED_INCLUDES "${XROOTD_INCLUDES}")
+SET(CMAKE_EXTRA_INCLUDE_FILES "XrdOuc/XrdOucName2Name.hh")
+check_cxx_source_compiles(
+"\#include \"XrdOuc/XrdOucName2Name.hh\"
+ int main() {XrdOucName2NameVec *vec=NULL; if (vec) {} return 0;}
+" HAVE_N2N_VEC
+)
+set(CMAKE_REQUIRED_INCLUDES)
+
+set(N2N_VEC_FILES)
+if (HAVE_N2N_VEC)
+  set(N2N_VEC_FILES src/N2NVec.cc src/N2NVec.hh)
+  add_definitions( -DHAVE_N2N_VEC=1 )
+endif ()
+
+add_library( XrdCmsTfc MODULE src/XrdCmsTfc.cc src/XrdCmsTfc.hh ${N2N_VEC_FILES} )
 target_link_libraries(XrdCmsTfc ${XROOTD_UTILS} ${XERCES_LIB} ${PCRE_LIB})
 
 if (NOT DEFINED CMAKE_INSTALL_LIBDIR)
