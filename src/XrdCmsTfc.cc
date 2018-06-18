@@ -314,7 +314,6 @@ XrdCmsTfc::TrivialFileCatalog::lfn2pfn(const char *lfn, char *buff, int blen)
         tmpLfn = applyRules(m_directRules, *protocol, m_destination, true, tmpLfn);
         if (!tmpLfn.empty()) {
             strncpy(buff, tmpLfn.c_str(), blen);
-            eDest->Say("Resulting PFN: ", buff);
             return 0;
         }
     }   
