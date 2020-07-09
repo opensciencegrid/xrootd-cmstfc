@@ -17,14 +17,10 @@ BuildRoot: %(mktemp -ud %{_tmppath}/%{name}-%{version}-%{release}-XXXXXX)
 BuildRequires: xrootd-devel >= 1:%{xrootd_current_major}.0.0-0
 BuildRequires: xrootd-devel <  1:%{xrootd_next_major}.0.0-0
 BuildRequires: pcre-devel
-
 BuildRequires: xerces-c-devel
-
 BuildRequires: cmake
-#BuildRequires: xrootd-compat-libs
 
 Requires: /usr/bin/xrootd pcre xerces-c
-#Requires: xrootd-compat-libs
 
 #%if 0%{?rhel} < 7
 #Requires: xrootd4 >= 1:4.1.0
