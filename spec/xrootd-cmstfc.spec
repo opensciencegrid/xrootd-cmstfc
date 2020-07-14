@@ -12,10 +12,11 @@ Source0: %{name}.tar.gz
 BuildRoot: %(mktemp -ud %{_tmppath}/%{name}-%{version}-%{release}-XXXXXX)
 
 %define xrootd_current_major 4
+%define xrootd_current_minor 12
 %define xrootd_next_major 5
 
-BuildRequires: xrootd-devel >= 1:%{xrootd_current_major}.0.0-1
-BuildRequires: xrootd-devel <  1:%{xrootd_next_major}.0.0-1
+BuildRequires: xrootd-devel >= 1:%{xrootd_current_major}
+BuildRequires: xrootd-devel <  1:%{xrootd_next_major}
 BuildRequires: pcre-devel
 BuildRequires: xerces-c-devel
 BuildRequires: cmake
@@ -25,7 +26,7 @@ Requires: /usr/bin/xrootd pcre xerces-c
 #%if 0%{?rhel} < 7
 #Requires: xrootd4 >= 1:4.1.0
 #%else
-Requires: xrootd >= 1:%{xrootd_current_major}.0.0-1
+Requires: xrootd >= 1:%{xrootd_current_major}.%{xrootd_current_minor}
 Requires: xrootd <  1:%{xrootd_next_major}.0.0-1
 #%endif
 
