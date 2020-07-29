@@ -23,12 +23,8 @@ BuildRequires: cmake
 
 Requires: /usr/bin/xrootd pcre xerces-c
 
-#%if 0%{?rhel} < 7
-#Requires: xrootd4 >= 1:4.1.0
-#%else
 Requires: xrootd >= 1:%{xrootd_current_major}.%{xrootd_current_minor}
 Requires: xrootd <  1:%{xrootd_next_major}.0.0-1
-#%endif
 
 %package devel
 Summary: Development headers and libraries for Xrootd CMSTFC plugin
