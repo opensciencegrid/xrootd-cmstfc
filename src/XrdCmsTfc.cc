@@ -355,7 +355,7 @@ std::string replaceWithRegexp (const int ovector[OVECCOUNT], const int rc,
 {
     //std::cerr << "InputString:" << inputString << std::endl;
  
-    char buffer[8];
+    char buffer[11];
     std::string result = outputFormat;
     int substring_length;
     int substring_begin;
