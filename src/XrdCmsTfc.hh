@@ -4,7 +4,8 @@
 #include "XrdOuc/XrdOucName2Name.hh"
 #include "XrdSys/XrdSysError.hh"
 
-#include <pcre.h>
+#define PCRE2_CODE_UNIT_WIDTH 8
+#include <pcre2.h>
 
 #include <list>
 #include <map>
@@ -48,9 +49,9 @@ public:
 private:
     
     typedef struct {
-	pcre *pathMatch;
+	pcre2_code *pathMatch;
         std::string pathMatchStr;
-	pcre *destinationMatch;
+	pcre2_code *destinationMatch;
         std::string destinationMatchStr;
 	std::string result;
 	std::string chain;
