@@ -94,7 +94,9 @@ void XrdCmsTfc::TrivialFileCatalog::freeProtocolRules(ProtocolRules protRules) {
     Rules rules = (*it).second;
     for (it2 = rules.begin(); it2 != rules.end(); it2++) {
       if (it2->pathMatch != NULL)
-        pcre_free(it2->pathMatch);
+        pcre2_code_free(it2->pathMatch);
+      if (it2->destinationMatch != NULL)
+        pcre2_code_free(it2->destinationMatch);
     }
   }
 }
@@ -138,25 +140,25 @@ XrdCmsTfc::TrivialFileCatalog::parseRule (DOMNode *ruleNode,
 	= _toChar (ruleElement->getAttribute (_toDOMS ("chain")));
     					    
     Rule rule;
-    const char *error;
-    int erroffset;
+    int errornumber;
+    PCRE2_SIZE erroroffset;
     rule.pathMatch = NULL;
     rule.pathMatchStr = pathMatchRegexp;
     rule.destinationMatch = NULL;
     rule.destinationMatchStr = destinationMatchRegexp;
-    rule.pathMatch = pcre_compile(pathMatchRegexp, 0, &error, &erroffset, NULL);
+    rule.pathMatch = pcre2_compile((PCRE2_SPTR)pathMatchRegexp, PCRE2_ZERO_TERMINATED, 0, &errornumber, &erroroffset, NULL);
     if (rule.pathMatch == NULL) {
       char *err = (char *)malloc(BUFFSIZE*sizeof(char));
-      snprintf(err, BUFFSIZE, "PCRE compilation failed at offset %d: %s", erroffset, error);
+      snprintf(err, BUFFSIZE, "PCRE2 compilation failed at offset %lu: %d", (unsigned long)erroroffset, errornumber);
       eDest->Say(err);
       free(err);
       return XRDCMSTFC_ERR_PARSERULE;
     }
 
-    rule.destinationMatch = pcre_compile(destinationMatchRegexp, 0, &error, &erroffset, NULL);
+    rule.destinationMatch = pcre2_compile((PCRE2_SPTR)destinationMatchRegexp, PCRE2_ZERO_TERMINATED, 0, &errornumber, &erroroffset, NULL);
     if (rule.destinationMatch == NULL) {
       char *err = (char *)malloc(BUFFSIZE*sizeof(char));
-      snprintf(err, BUFFSIZE, "PCRE compilation failed at offset %d: %s", erroffset, error);
+      snprintf(err, BUFFSIZE, "PCRE2 compilation failed at offset %lu: %d", (unsigned long)erroroffset, errornumber);
       eDest->Say(err);
       free(err);
       return XRDCMSTFC_ERR_PARSERULE;
@@ -328,17 +330,18 @@ int XrdCmsTfc::TrivialFileCatalog::lfn2rfn(const char *lfn, char *buff, int blen
 
 }
 
-std::string replace(const std::string inputString, pcre * re, std::string replacementString) {
+std::string replace(const std::string inputString, pcre2_code * re, std::string replacementString) {
 
-    int ovector[OVECCOUNT], rc;
+    pcre2_match_data *match_data = pcre2_match_data_create_from_pattern(re, NULL);
     std::string result;
-    rc = pcre_exec(re, NULL, inputString.c_str(), inputString.length(), 0, 0,
-        ovector, OVECCOUNT);
+    int rc = pcre2_match(re, (PCRE2_SPTR)inputString.c_str(), inputString.length(), 0, 0, match_data, NULL);
 
     if (rc <= 0) {
+        pcre2_match_data_free(match_data);
         return "";
     }
 
+    PCRE2_SIZE *ovector = pcre2_get_ovector_pointer(match_data);
     int substring_end = 0, substring_begin;
     for (int i = 0; i < rc; i++) {
         substring_begin = ovector[2*i];
@@ -346,10 +349,11 @@ std::string replace(const std::string inputString, pcre * re, std::string replac
         substring_end = ovector[2*i+1] + substring_begin;
     }
 
+    pcre2_match_data_free(match_data);
     return result;
 }
 
-std::string replaceWithRegexp (const int ovector[OVECCOUNT], const int rc,
+std::string replaceWithRegexp (const PCRE2_SIZE ovector[], const int rc,
 		   const std::string inputString,
 		   const std::string outputFormat)
 {
@@ -357,8 +361,8 @@ std::string replaceWithRegexp (const int ovector[OVECCOUNT], const int rc,
  
     char buffer[11];
     std::string result = outputFormat;
-    int substring_length;
-    int substring_begin;
+    PCRE2_SIZE substring_length;
+    PCRE2_SIZE substring_begin;
 
     for (int i = 1;
 	 i < rc;
@@ -373,19 +377,19 @@ std::string replaceWithRegexp (const int ovector[OVECCOUNT], const int rc,
         substring_length = ovector[2*i+1] - substring_begin;
         std::string matchResult = inputString.substr(substring_begin, substring_length);
 	
-        const char *error;
-        int erroffset;
-        pcre * substitutionToken = pcre_compile(variableRegexp.c_str(),
-            0, &error, &erroffset, NULL);
+        int errornumber;
+        PCRE2_SIZE erroroffset;
+        pcre2_code * substitutionToken = pcre2_compile((PCRE2_SPTR)variableRegexp.c_str(),
+            PCRE2_ZERO_TERMINATED, 0, &errornumber, &erroroffset, NULL);
         if (substitutionToken == NULL) {
-            pcre_free(substitutionToken);
+            pcre2_code_free(substitutionToken);
             return "";
         }
 	//std::cerr << "Current match: " << matchResult << std::endl;
         
 	result = replace(result, substitutionToken, matchResult);
 
-        pcre_free(substitutionToken);
+        pcre2_code_free(substitutionToken);
     }
     return result;    
 }
@@ -411,17 +415,21 @@ XrdCmsTfc::TrivialFileCatalog::applyRules (const ProtocolRules& protocolRules,
 	 i != rules.end ();
 	 i++)
     {
-        int ovector[OVECCOUNT];
+        pcre2_match_data *match_data = pcre2_match_data_create_from_pattern(i->destinationMatch, NULL);
         int rc=0;
-        rc = pcre_exec(i->destinationMatch, NULL, destination.c_str(), destination.length(), 0, PCRE_ANCHORED, ovector, OVECCOUNT);
+        rc = pcre2_match(i->destinationMatch, (PCRE2_SPTR)destination.c_str(), destination.length(), 0, PCRE2_ANCHORED, match_data, NULL);
 	if (rc < 0) {
+            pcre2_match_data_free(match_data);
 	    continue;
         } else {
             //std::cerr << "Destination did match; my destination " << destination << ", regexp: " << i->destinationMatchStr << std::endl;
         }
 	
-        rc = pcre_exec(i->pathMatch, NULL, name.c_str(), name.length(), 0, PCRE_ANCHORED, ovector, OVECCOUNT);
+        pcre2_match_data_free(match_data);
+        match_data = pcre2_match_data_create_from_pattern(i->pathMatch, NULL);
+        rc = pcre2_match(i->pathMatch, (PCRE2_SPTR)name.c_str(), name.length(), 0, PCRE2_ANCHORED, match_data, NULL);
 	if (rc < 0) {
+            pcre2_match_data_free(match_data);
 	    continue;
         } else {
             //std::cerr << "Path did match; my path " << name << ", regexp: " << i->pathMatchStr << std::endl;
@@ -438,10 +446,12 @@ XrdCmsTfc::TrivialFileCatalog::applyRules (const ProtocolRules& protocolRules,
             //std::cerr << "Not chaining another rule!" << std::endl;
         }
 	    
-        rc = pcre_exec(i->pathMatch, NULL, name.c_str(), name.length(), 0, PCRE_ANCHORED, ovector,
-            OVECCOUNT);
+        pcre2_match_data_free(match_data);
+        match_data = pcre2_match_data_create_from_pattern(i->pathMatch, NULL);
+        rc = pcre2_match(i->pathMatch, (PCRE2_SPTR)name.c_str(), name.length(), 0, PCRE2_ANCHORED, match_data, NULL);
 
         if (rc >= 0) {
+            PCRE2_SIZE *ovector = pcre2_get_ovector_pointer(match_data);
             name = replaceWithRegexp(ovector, rc, name, i->result);
         } else {
             //std::cerr << "No replacements necessary." << std::endl;
@@ -453,6 +463,7 @@ XrdCmsTfc::TrivialFileCatalog::applyRules (const ProtocolRules& protocolRules,
 		applyRules (protocolRules, chain, destination, direct, name);		
 	}
 	//std::cerr << "Result " << name << std::endl;
+        pcre2_match_data_free(match_data);
 	return name;
     }
     return "";
